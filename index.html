@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173b32">
+  <meta name="description" content="Inventario personal que funciona sin conexión.">
+  <title>Inventario local</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="stylesheet" href="styles.css">
+  <script src="app.js" defer></script>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="page-header">
+      <div class="brand-mark" aria-hidden="true">I</div>
+      <div>
+        <p class="eyebrow">CONTROL DE EXISTENCIAS</p>
+        <h1>Inventario local</h1>
+        <p class="subtitle">Tus productos, guardados en este dispositivo.</p>
+      </div>
+      <!-- <span class="offline-badge"><span class="status-dot" aria-hidden="true"></span>Uso local</span> -->
+    </header>
+
+    <section class="summary-card" aria-label="Resumen del inventario">
+      <div><span class="summary-label">Productos registrados</span><strong id="product-count">0</strong></div>
+      <div><span class="summary-label">Unidades en inventario</span><strong id="unit-count">0</strong></div>
+      <div class="summary-note">La información se conserva en este navegador.</div>
+    </section>
+
+    <section class="workspace" aria-label="Administrar inventario">
+      <aside class="panel form-panel">
+        <div class="section-heading">
+          <div><p class="eyebrow">NUEVO REGISTRO</p><h2>Agregar producto</h2></div>
+          <span class="heading-icon" aria-hidden="true">＋</span>
+        </div>
+        <form id="product-form" novalidate>
+          <div class="field-group">
+            <label for="product-name">Nombre del producto</label>
+            <div class="voice-entry"><input id="product-name" name="name" type="text" maxlength="100" autocomplete="off" placeholder="Ej. Café molido" required><button id="voice-button" class="voice-button" type="button" aria-label="Dictar nombre del producto" aria-pressed="false" aria-describedby="voice-status"><span aria-hidden="true">🎙</span><span id="voice-button-label">Dictar</span></button></div>
+            <p id="voice-status" class="field-hint voice-status" role="status" aria-live="polite" hidden></p>
+          </div>
+          <div class="field-group">
+            <label for="product-barcode">Código de barras</label>
+            <div class="barcode-entry"><input id="product-barcode" name="barcode" type="text" maxlength="120" autocomplete="off" placeholder="Escribe o escanea el código" required><button type="button" class="scan-button" data-scan-target="product-barcode"><span aria-hidden="true">▦</span> Escanear</button></div>
+            <p class="field-hint">Obligatorio al crear. Se conserva como texto, incluidos los ceros iniciales.</p>
+          </div>
+          <div class="field-group">
+            <label for="product-quantity">Cantidad inicial</label>
+            <div class="input-with-unit"><input id="product-quantity" name="quantity" type="number" min="0" step="1" inputmode="numeric" value="0" required><span>unidades</span></div>
+          </div>
+          <button class="button button-primary button-wide" type="submit">Guardar producto <span aria-hidden="true">→</span></button>
+          <p class="form-help">Ni el nombre ni el código pueden repetirse. Puedes corregirlos después.</p>
+        </form>
+      </aside>
+
+      <section class="panel inventory-panel" aria-labelledby="inventory-title">
+        <div class="inventory-topline">
+          <div class="section-heading inventory-heading">
+            <div><p class="eyebrow">TUS EXISTENCIAS</p><h2 id="inventory-title">Inventario</h2></div>
+          </div>
+          <span id="visible-count" class="visible-count">0 productos</span>
+        </div>
+        <div class="search-wrap">
+          <label class="visually-hidden" for="search-input">Buscar productos</label>
+          <span class="search-icon" aria-hidden="true">⌕</span>
+          <input id="search-input" type="search" placeholder="Buscar por nombre o código…" autocomplete="off">
+          <kbd>⌘ K</kbd>
+        </div>
+        <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th scope="col">Producto / código</th><th scope="col">Cantidad</th><th scope="col" class="actions-heading">Acciones</th></tr></thead>
+            <tbody id="product-list"></tbody>
+          </table>
+        </div>
+        <div id="empty-state" class="empty-state">
+          <div class="empty-illustration" aria-hidden="true"><span></span><span></span><span></span></div>
+          <h3 id="empty-title">Aún no hay productos</h3>
+          <p id="empty-description">Agrega tu primer producto para comenzar a llevar el control.</p>
+        </div>
+      </section>
+    </section>
+    <footer class="page-footer"><span>Inventario personal</span><span>Datos guardados de forma local</span></footer>
+  </main>
+
+  <dialog id="edit-dialog" aria-labelledby="edit-title">
+    <form id="edit-form" class="dialog-card" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">ACTUALIZAR REGISTRO</p><h2 id="edit-title">Editar producto</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <input type="hidden" id="edit-id">
+      <div class="field-group"><label for="edit-name">Nombre del producto</label><input id="edit-name" type="text" maxlength="100" required></div>
+      <div class="field-group"><label for="edit-barcode">Código de barras</label><div class="barcode-entry"><input id="edit-barcode" type="text" maxlength="120" autocomplete="off" placeholder="Escribe o escanea el código"><button type="button" class="scan-button" data-scan-target="edit-barcode"><span aria-hidden="true">▦</span> Escanear</button></div><p class="field-hint">Los productos anteriores a esta actualización pueden seguir sin código.</p></div>
+      <div class="field-group"><label for="edit-quantity">Cantidad actual</label><div class="input-with-unit"><input id="edit-quantity" type="number" min="0" step="1" inputmode="numeric" required><span>unidades</span></div></div>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" data-close-dialog>Cancelar</button><button type="submit" class="button button-primary">Guardar cambios</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="stock-dialog" aria-labelledby="stock-title">
+    <form id="stock-form" class="dialog-card" novalidate>
+      <div class="dialog-heading"><div><p class="eyebrow">ENTRADA DE EXISTENCIAS</p><h2 id="stock-title">Sumar unidades</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <input type="hidden" id="stock-id">
+      <p class="dialog-description">Producto: <strong id="stock-product-name"></strong></p>
+      <div class="field-group"><label for="stock-amount">Unidades que deseas sumar</label><div class="input-with-unit"><input id="stock-amount" type="number" min="1" step="1" inputmode="numeric" value="1" required><span>unidades</span></div></div>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" data-close-dialog>Cancelar</button><button type="submit" class="button button-primary">Sumar al inventario</button></div>
+    </form>
+  </dialog>
+
+  <dialog id="scanner-dialog" aria-labelledby="scanner-title">
+    <section class="dialog-card scanner-card">
+      <div class="dialog-heading"><div><p class="eyebrow">LECTURA CON CÁMARA</p><h2 id="scanner-title">Escanear código</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <p id="scanner-status" class="scanner-status" role="status" aria-live="polite">Solicitando acceso a la cámara…</p>
+      <div class="camera-frame"><video id="scanner-video" muted playsinline aria-label="Vista de la cámara para escanear el código"></video><span class="scan-guide" aria-hidden="true"></span></div>
+      <p class="field-hint">Centra el código de barras dentro del marco. También puedes escribirlo manualmente.</p>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" data-close-dialog>Cerrar escáner</button></div>
+    </section>
+  </dialog>
+</body>
+</html>
