@@ -1,11 +1,12 @@
 // Administra productos, códigos de barras y existencias en IndexedDB.
 const DB_NAME = 'inventario-local-db';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 const STORE_NAME = 'productos';
 const form = document.querySelector('#product-form');
 const nameInput = document.querySelector('#product-name');
 const barcodeInput = document.querySelector('#product-barcode');
 const quantityInput = document.querySelector('#product-quantity');
+const previousPurchaseInput = document.querySelector('#product-previous-purchase');
 const voiceButton = document.querySelector('#voice-button');
 const voiceButtonLabel = document.querySelector('#voice-button-label');
 const voiceStatus = document.querySelector('#voice-status');
@@ -158,7 +159,9 @@ function openDatabase() {
       cursorRequest.onsuccess = () => {
         const cursor = cursorRequest.result;
         if (!cursor) return;
-        cursor.update({ ...cursor.value, nameKey: normalizeText(cursor.value.name) });
+        const record = { ...cursor.value, nameKey: normalizeText(cursor.value.name) };
+        if (record.previousPurchaseQuantity === undefined) record.previousPurchaseQuantity = null;
+        cursor.update(record);
         cursor.continue();
       };
     };
@@ -195,6 +198,37 @@ function showNotice(message, isError = false) {
   notice.hidden = false;
   noticeTimer = setTimeout(() => { notice.hidden = true; }, 4500);
 }
+
+function downloadFile(content, type, extension) {
+  const date = new Date().toISOString().slice(0, 10);
+  const url = URL.createObjectURL(new Blob([content], { type }));
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = `inventario-${date}.${extension}`;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
+function csvCell(value) {
+  const text = value == null ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+document.querySelector('#export-csv').addEventListener('click', () => {
+  const rows = [
+    ['Código de barras', 'Nombre', 'Cantidad restante', 'Cantidad comprada anteriormente'],
+    ...products.map(product => [product.barcode || '', product.name, product.quantity, product.previousPurchaseQuantity ?? ''])
+  ];
+  const csv = `\uFEFF${rows.map(row => row.map(csvCell).join(',')).join('\r\n')}`;
+  downloadFile(csv, 'text/csv;charset=utf-8', 'csv');
+  showNotice('Inventario exportado en CSV.');
+});
+
+document.querySelector('#export-json').addEventListener('click', () => {
+  const backup = { format: 'inventario-local', version: 1, exportedAt: new Date().toISOString(), products };
+  downloadFile(JSON.stringify(backup, null, 2), 'application/json;charset=utf-8', 'json');
+  showNotice('Copia completa exportada en JSON.');
+});
 
 function render() {
   const query = normalizeText(searchInput.value);
@@ -248,6 +282,8 @@ function createProductRow(product) {
   pill.textContent = product.quantity.toLocaleString('es');
   pill.setAttribute('aria-label', `${product.quantity} unidades`);
   quantityCell.append(pill);
+  const previousCell = document.createElement('td');
+  previousCell.textContent = product.previousPurchaseQuantity == null ? '—' : product.previousPurchaseQuantity.toLocaleString('es');
   const actionsCell = document.createElement('td');
   const actions = document.createElement('div');
   actions.className = 'row-actions';
@@ -257,7 +293,7 @@ function createProductRow(product) {
     createAction('Eliminar', 'delete', 'delete-action', product.id, `Eliminar ${product.name}`)
   );
   actionsCell.append(actions);
-  row.append(nameCell, quantityCell, actionsCell);
+  row.append(nameCell, quantityCell, previousCell, actionsCell);
   return row;
 }
 
@@ -280,16 +316,19 @@ form.addEventListener('submit', async event => {
   const name = cleanName(nameInput.value);
   const barcode = cleanBarcode(barcodeInput.value);
   const quantity = validInteger(quantityInput.value);
+  const previousPurchaseQuantity = validInteger(previousPurchaseInput.value);
   if (!name) return showNotice('Escribe el nombre del producto.', true);
   if (!barcode) return showNotice('Escribe o escanea el código de barras del producto.', true);
   if (quantity === null) return showNotice('La cantidad debe ser un número entero igual o mayor que cero.', true);
+  if (previousPurchaseInput.value !== '' && previousPurchaseQuantity === null) return showNotice('La cantidad comprada anteriormente debe ser un número entero igual o mayor que cero, o quedar vacía.', true);
   if (hasDuplicateName(name)) return showNotice('Ya existe un producto con ese nombre.', true);
   if (hasDuplicateBarcode(barcode)) return showNotice('Ese código de barras ya está registrado.', true);
   try {
-    await storeRequest('readwrite', store => store.add(withBarcodeKey({ name, barcode, quantity, createdAt: Date.now() })));
+    await storeRequest('readwrite', store => store.add(withBarcodeKey({ name, barcode, quantity, previousPurchaseQuantity, createdAt: Date.now() })));
     await loadProducts();
     form.reset();
     quantityInput.value = '0';
+    previousPurchaseInput.value = '';
     nameInput.focus();
     showNotice('Producto guardado correctamente.');
   } catch (error) { showSaveError(error); }
@@ -307,6 +346,7 @@ list.addEventListener('click', async event => {
     document.querySelector('#edit-name').value = product.name;
     document.querySelector('#edit-barcode').value = product.barcode || '';
     document.querySelector('#edit-quantity').value = product.quantity;
+    document.querySelector('#edit-previous-purchase').value = product.previousPurchaseQuantity ?? '';
     editDialog.showModal();
     document.querySelector('#edit-name').focus();
   } else if (button.dataset.action === 'stock') {
@@ -331,14 +371,17 @@ document.querySelector('#edit-form').addEventListener('submit', async event => {
   const name = cleanName(document.querySelector('#edit-name').value);
   const barcode = cleanBarcode(document.querySelector('#edit-barcode').value);
   const quantity = validInteger(document.querySelector('#edit-quantity').value);
+  const previousInput = document.querySelector('#edit-previous-purchase');
+  const previousPurchaseQuantity = validInteger(previousInput.value);
   const product = products.find(item => item.id === id);
   if (!product) return showNotice('No encontramos ese producto.', true);
   if (!name) return showNotice('Escribe el nombre del producto.', true);
   if (quantity === null) return showNotice('La cantidad debe ser un número entero igual o mayor que cero.', true);
+  if (previousInput.value !== '' && previousPurchaseQuantity === null) return showNotice('La cantidad comprada anteriormente debe ser un número entero igual o mayor que cero, o quedar vacía.', true);
   if (hasDuplicateName(name, id)) return showNotice('Ya existe otro producto con ese nombre.', true);
   if (hasDuplicateBarcode(barcode, id)) return showNotice('Ese código de barras ya está asignado a otro producto.', true);
   try {
-    await storeRequest('readwrite', store => store.put(withBarcodeKey({ ...product, name, barcode, quantity })));
+    await storeRequest('readwrite', store => store.put(withBarcodeKey({ ...product, name, barcode, quantity, previousPurchaseQuantity })));
     editDialog.close();
     await loadProducts();
     showNotice('Cambios guardados correctamente.');

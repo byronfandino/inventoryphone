@@ -49,6 +49,10 @@
             <label for="product-quantity">Cantidad inicial</label>
             <div class="input-with-unit"><input id="product-quantity" name="quantity" type="number" min="0" step="1" inputmode="numeric" value="0" required><span>unidades</span></div>
           </div>
+          <div class="field-group">
+            <label for="product-previous-purchase">Cantidad comprada anteriormente <span class="optional-label">(opcional)</span></label>
+            <div class="input-with-unit"><input id="product-previous-purchase" name="previousPurchaseQuantity" type="number" min="0" step="1" inputmode="numeric"><span>unidades</span></div>
+          </div>
           <button class="button button-primary button-wide" type="submit">Guardar producto <span aria-hidden="true">→</span></button>
           <p class="form-help">Ni el nombre ni el código pueden repetirse. Puedes corregirlos después.</p>
         </form>
@@ -67,10 +71,14 @@
           <input id="search-input" type="search" placeholder="Buscar por nombre o código…" autocomplete="off">
           <kbd>⌘ K</kbd>
         </div>
+        <div class="export-actions" aria-label="Exportar inventario">
+          <button id="export-csv" type="button" class="button button-secondary">Exportar CSV</button>
+          <button id="export-json" type="button" class="button button-secondary">Exportar JSON</button>
+        </div>
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
         <div class="table-scroll">
           <table>
-            <thead><tr><th scope="col">Producto / código</th><th scope="col">Cantidad</th><th scope="col" class="actions-heading">Acciones</th></tr></thead>
+            <thead><tr><th scope="col">Producto / código</th><th scope="col">Cantidad actual</th><th scope="col">Comprada anteriormente</th><th scope="col" class="actions-heading">Acciones</th></tr></thead>
             <tbody id="product-list"></tbody>
           </table>
         </div>
@@ -91,6 +99,7 @@
       <div class="field-group"><label for="edit-name">Nombre del producto</label><input id="edit-name" type="text" maxlength="100" required></div>
       <div class="field-group"><label for="edit-barcode">Código de barras</label><div class="barcode-entry"><input id="edit-barcode" type="text" maxlength="120" autocomplete="off" placeholder="Escribe o escanea el código"><button type="button" class="scan-button" data-scan-target="edit-barcode"><span aria-hidden="true">▦</span> Escanear</button></div><p class="field-hint">Los productos anteriores a esta actualización pueden seguir sin código.</p></div>
       <div class="field-group"><label for="edit-quantity">Cantidad actual</label><div class="input-with-unit"><input id="edit-quantity" type="number" min="0" step="1" inputmode="numeric" required><span>unidades</span></div></div>
+      <div class="field-group"><label for="edit-previous-purchase">Cantidad comprada anteriormente <span class="optional-label">(opcional)</span></label><div class="input-with-unit"><input id="edit-previous-purchase" type="number" min="0" step="1" inputmode="numeric"><span>unidades</span></div></div>
       <div class="dialog-actions"><button type="button" class="button button-secondary" data-close-dialog>Cancelar</button><button type="submit" class="button button-primary">Guardar cambios</button></div>
     </form>
   </dialog>
