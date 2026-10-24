@@ -37,7 +37,7 @@
         <form id="product-form" novalidate>
           <div class="field-group">
             <label for="product-name">Nombre del producto</label>
-            <div class="voice-entry"><input id="product-name" name="name" type="text" maxlength="100" autocomplete="off" placeholder="Ej. Café molido" required><button id="voice-button" class="voice-button" type="button" aria-label="Dictar nombre del producto" aria-pressed="false" aria-describedby="voice-status"><span aria-hidden="true">🎙</span><span id="voice-button-label">Dictar</span></button></div>
+            <div class="voice-entry"><input id="product-name" name="name" type="text" maxlength="100" autocomplete="off" placeholder="Ej. Lapiz HB Mirado" required><button id="voice-button" class="voice-button" type="button" aria-label="Dictar nombre del producto" aria-pressed="false" aria-describedby="voice-status"><span aria-hidden="true">🎙</span><span id="voice-button-label">Dictar</span></button></div>
             <p id="voice-status" class="field-hint voice-status" role="status" aria-live="polite" hidden></p>
           </div>
           <div class="field-group">
@@ -73,7 +73,9 @@
         </div>
         <div class="export-actions" aria-label="Exportar inventario">
           <button id="export-csv" type="button" class="button button-secondary">Exportar CSV</button>
-          <button id="export-json" type="button" class="button button-secondary">Exportar JSON</button>
+          <button id="export-json" type="button" class="button button-secondary">Exportar copia JSON</button>
+          <button id="import-json" type="button" class="button button-secondary">Importar copia JSON</button>
+          <input id="import-file" type="file" accept=".json,application/json" class="visually-hidden" aria-label="Seleccionar copia de seguridad JSON">
         </div>
         <div id="notice" class="notice" role="status" aria-live="polite" hidden></div>
         <div class="table-scroll">
@@ -102,6 +104,21 @@
       <div class="field-group"><label for="edit-previous-purchase">Cantidad comprada <span class="optional-label">(opcional)</span></label><div class="input-with-unit"><input id="edit-previous-purchase" type="number" min="0" step="1" inputmode="numeric"><span>unidades</span></div></div>
       <div class="dialog-actions"><button type="button" class="button button-secondary" data-close-dialog>Cancelar</button><button type="submit" class="button button-primary">Guardar cambios</button></div>
     </form>
+  </dialog>
+
+  <dialog id="import-dialog" aria-labelledby="import-title">
+    <section class="dialog-card">
+      <div class="dialog-heading"><div><p class="eyebrow">RESTAURAR INVENTARIO</p><h2 id="import-title">Revisar copia JSON</h2></div><button type="button" class="icon-button" data-close-dialog aria-label="Cerrar">×</button></div>
+      <p id="import-summary" class="dialog-description"></p>
+      <p id="import-errors" class="import-errors" role="alert" hidden></p>
+      <fieldset class="import-modes">
+        <legend>¿Cómo deseas importar?</legend>
+        <label><input type="radio" name="import-mode" value="replace" checked> Reemplazar todo el inventario existente</label>
+        <label><input type="radio" name="import-mode" value="add"> Agregar al inventario existente</label>
+      </fieldset>
+      <p id="import-mode-help" class="field-hint">Reemplaza todos los productos actuales. Se pedirá confirmación antes de guardar.</p>
+      <div class="dialog-actions"><button type="button" class="button button-secondary" data-close-dialog>Cancelar</button><button id="apply-import" type="button" class="button button-primary" disabled>Importar</button></div>
+    </section>
   </dialog>
 
   <dialog id="stock-dialog" aria-labelledby="stock-title">

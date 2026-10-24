@@ -19,6 +19,7 @@ const notice = document.querySelector('#notice');
 const editDialog = document.querySelector('#edit-dialog');
 const stockDialog = document.querySelector('#stock-dialog');
 const scannerDialog = document.querySelector('#scanner-dialog');
+const importDialog = document.querySelector('#import-dialog');
 const scannerVideo = document.querySelector('#scanner-video');
 const scannerStatus = document.querySelector('#scanner-status');
 let db;
@@ -31,6 +32,10 @@ let scannerTarget;
 let speechRecognition;
 let speechActive = false;
 let speechCancelled = false;
+let pendingImport;
+
+const BACKUP_FORMAT = 'inventario-local';
+const BACKUP_VERSION = 2;
 
 function setVoiceStatus(message, isError = false) {
   voiceStatus.textContent = message;
@@ -225,9 +230,141 @@ document.querySelector('#export-csv').addEventListener('click', () => {
 });
 
 document.querySelector('#export-json').addEventListener('click', () => {
-  const backup = { format: 'inventario-local', version: 1, exportedAt: new Date().toISOString(), products };
-  downloadFile(JSON.stringify(backup, null, 2), 'application/json;charset=utf-8', 'json');
+  const backup = {
+    format: BACKUP_FORMAT,
+    version: BACKUP_VERSION,
+    app: 'Inventario local',
+    exportedAt: new Date().toISOString(),
+    products: products.map(product => ({
+      barcode: product.barcode || '',
+      name: product.name,
+      quantity: product.quantity,
+      previousPurchaseQuantity: product.previousPurchaseQuantity ?? null
+    }))
+  };
+  downloadFile(`\uFEFF${JSON.stringify(backup, null, 2)}`, 'application/json;charset=utf-8', 'json');
   showNotice('Copia completa exportada en JSON.');
+});
+
+function validateBackup(backup) {
+  const errors = [];
+  if (!backup || typeof backup !== 'object' || Array.isArray(backup)) return { errors: ['El archivo debe contener un objeto JSON de copia de seguridad.'] };
+  if (backup.format !== BACKUP_FORMAT) errors.push(`Formato no reconocido. Se esperaba "${BACKUP_FORMAT}".`);
+  if (![1, BACKUP_VERSION].includes(backup.version)) errors.push(`Versión no compatible. Esta app admite las versiones 1 y ${BACKUP_VERSION}.`);
+  const legacyBackup = backup.version === 1;
+  const allowedTopLevel = legacyBackup ? ['format', 'version', 'exportedAt', 'products'] : ['format', 'version', 'app', 'exportedAt', 'products'];
+  const unknownTopLevel = Object.keys(backup).filter(key => !allowedTopLevel.includes(key));
+  if (unknownTopLevel.length) errors.push(`La copia contiene campos no permitidos: ${unknownTopLevel.join(', ')}.`);
+  if (!legacyBackup && backup.app !== 'Inventario local') errors.push('El campo "app" no identifica una copia de Inventario local.');
+  if (typeof backup.exportedAt !== 'string' || Number.isNaN(Date.parse(backup.exportedAt))) errors.push('El campo "exportedAt" debe contener una fecha ISO válida.');
+  if (!Array.isArray(backup.products)) errors.push('El campo "products" debe ser una lista de productos.');
+  if (errors.length) return { errors };
+  const names = new Set();
+  const barcodes = new Set();
+  const normalized = [];
+  backup.products.forEach((product, index) => {
+    const label = `Producto ${index + 1}`;
+    if (!product || typeof product !== 'object' || Array.isArray(product)) {
+      errors.push(`${label}: debe ser un objeto.`);
+      return;
+    }
+    const expected = legacyBackup ? ['barcode', 'name', 'quantity'] : ['barcode', 'name', 'quantity', 'previousPurchaseQuantity'];
+    const legacyFields = ['id', 'nameKey', 'barcodeKey', 'createdAt'];
+    const unknown = Object.keys(product).filter(key => !expected.includes(key) && !(legacyBackup && legacyFields.includes(key)) && !(legacyBackup && key === 'previousPurchaseQuantity'));
+    const missing = expected.filter(key => !Object.prototype.hasOwnProperty.call(product, key));
+    if (unknown.length) errors.push(`${label}: campos no permitidos: ${unknown.join(', ')}.`);
+    if (missing.length) errors.push(`${label}: faltan campos: ${missing.join(', ')}.`);
+    if (typeof product.barcode !== 'string') errors.push(`${label}: "barcode" debe ser texto.`);
+    if (typeof product.name !== 'string' || !cleanName(product.name)) errors.push(`${label}: "name" debe ser texto y no puede estar vacío.`);
+    if (!Number.isSafeInteger(product.quantity) || product.quantity < 0) errors.push(`${label}: "quantity" debe ser un entero no negativo.`);
+    const previousPurchaseQuantity = product.previousPurchaseQuantity === undefined && legacyBackup ? null : product.previousPurchaseQuantity;
+    if (previousPurchaseQuantity !== null && (!Number.isSafeInteger(previousPurchaseQuantity) || previousPurchaseQuantity < 0)) errors.push(`${label}: "previousPurchaseQuantity" debe ser null o un entero no negativo.`);
+    if (typeof product.barcode !== 'string' || typeof product.name !== 'string' || !cleanName(product.name) || !Number.isSafeInteger(product.quantity) || product.quantity < 0 || (previousPurchaseQuantity !== null && (!Number.isSafeInteger(previousPurchaseQuantity) || previousPurchaseQuantity < 0))) return;
+    const name = cleanName(product.name);
+    const nameKey = normalizeText(name);
+    const barcode = cleanBarcode(product.barcode);
+    const codeKey = barcodeKey(barcode);
+    if (names.has(nameKey)) errors.push(`${label}: el nombre "${name}" está duplicado en la copia (no se permiten nombres repetidos ignorando mayúsculas/minúsculas y espacios).`);
+    else names.add(nameKey);
+    if (codeKey && barcodes.has(codeKey)) errors.push(`${label}: el código "${barcode}" está duplicado en la copia (se ignoran espacios externos y mayúsculas/minúsculas).`);
+    else if (codeKey) barcodes.add(codeKey);
+    normalized.push({ barcode, name, quantity: product.quantity, previousPurchaseQuantity });
+  });
+  return { errors, products: normalized };
+}
+
+function getImportConflicts(incoming, existing) {
+  const conflicts = [];
+  const names = new Map(existing.map(product => [normalizeText(product.name), product.name]));
+  const barcodes = new Map(existing.filter(product => product.barcode).map(product => [barcodeKey(product.barcode), product.barcode]));
+  incoming.forEach(product => {
+    if (names.has(normalizeText(product.name))) conflicts.push(`Nombre repetido: "${product.name}" ya existe en el inventario.`);
+    const key = barcodeKey(product.barcode);
+    if (key && barcodes.has(key)) conflicts.push(`Código repetido: "${product.barcode}" ya existe en el inventario.`);
+  });
+  return conflicts;
+}
+
+document.querySelector('#import-json').addEventListener('click', () => document.querySelector('#import-file').click());
+document.querySelector('#import-file').addEventListener('change', async event => {
+  const file = event.target.files[0];
+  event.target.value = '';
+  if (!file) return;
+  let validation;
+  try { validation = validateBackup(JSON.parse(await file.text().then(text => text.replace(/^\uFEFF/, '')))); }
+  catch { validation = { errors: ['No se pudo leer el archivo: verifica que sea JSON válido codificado en UTF-8.'] }; }
+  pendingImport = validation.errors.length ? null : validation.products;
+  const summary = document.querySelector('#import-summary');
+  const errorsBox = document.querySelector('#import-errors');
+  const applyButton = document.querySelector('#apply-import');
+  summary.textContent = pendingImport ? `Copia válida: ${pendingImport.length} ${pendingImport.length === 1 ? 'producto' : 'productos'}. Elige el modo de importación.` : 'La copia no es válida y no se importará ningún registro.';
+  errorsBox.hidden = !validation.errors.length;
+  errorsBox.replaceChildren(...validation.errors.map(message => { const line = document.createElement('div'); line.textContent = message; return line; }));
+  applyButton.disabled = !pendingImport;
+  document.querySelector('input[name="import-mode"][value="replace"]').checked = true;
+  document.querySelector('#import-mode-help').textContent = 'Reemplaza todos los productos actuales. Se pedirá confirmación antes de guardar.';
+  importDialog.showModal();
+});
+
+document.querySelectorAll('input[name="import-mode"]').forEach(input => input.addEventListener('change', () => {
+  document.querySelector('#import-mode-help').textContent = input.value === 'replace'
+    ? 'Reemplaza todos los productos actuales. Se pedirá confirmación antes de guardar.'
+    : 'Agrega los productos si no hay nombres o códigos repetidos. Ante cualquier conflicto no se agregará ninguno.';
+}));
+
+function commitImport(mode, incoming) {
+  return new Promise((resolve, reject) => {
+    const transaction = db.transaction(STORE_NAME, 'readwrite');
+    const store = transaction.objectStore(STORE_NAME);
+    transaction.oncomplete = () => resolve();
+    transaction.onabort = () => reject(transaction.error || new Error('La transacción se canceló; no se aplicaron cambios.'));
+    transaction.onerror = () => reject(transaction.error || new Error('No se pudo completar la importación.'));
+    if (mode === 'replace') store.clear();
+    incoming.forEach(product => store.add(withBarcodeKey({ ...product, createdAt: Date.now() })));
+  });
+}
+
+document.querySelector('#apply-import').addEventListener('click', async () => {
+  if (!pendingImport) return;
+  const mode = document.querySelector('input[name="import-mode"]:checked').value;
+  if (mode === 'replace' && !window.confirm(`Se reemplazará el inventario completo (${products.length} productos actuales) por ${pendingImport.length} productos de la copia. ¿Continuar?`)) return;
+  const conflicts = mode === 'add' ? getImportConflicts(pendingImport, products) : [];
+  if (conflicts.length) {
+    const errorsBox = document.querySelector('#import-errors');
+    errorsBox.replaceChildren(...conflicts.map(message => { const line = document.createElement('div'); line.textContent = message; return line; }));
+    errorsBox.hidden = false;
+    document.querySelector('#import-summary').textContent = `Se encontraron ${conflicts.length} conflictos. No se guardó ningún producto.`;
+    return;
+  }
+  try {
+    await commitImport(mode, pendingImport);
+    importDialog.close();
+    pendingImport = undefined;
+    await loadProducts();
+    showNotice(mode === 'replace' ? 'Inventario reemplazado correctamente.' : 'Productos agregados correctamente.');
+  } catch (error) {
+    showNotice(`La importación falló y no se aplicaron cambios: ${error.message}`, true);
+  }
 });
 
 function render() {

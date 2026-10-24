@@ -1,5 +1,5 @@
 // Guarda la interfaz para abrirla sin conexión después de la primera visita.
-const CACHE_NAME = 'inventario-local-v4';
+const CACHE_NAME = 'inventario-local-v5';
 const APP_FILES = ['./', './index.html', './styles.css', './app.js', './manifest.json'];
 
 self.addEventListener('install', event => {
