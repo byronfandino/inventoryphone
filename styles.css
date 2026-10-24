@@ -12,3 +12,4 @@
 @media(max-width:600px){.voice-entry{gap:5px}.voice-button{padding:0 8px;font-size:9px}}
 .export-actions{display:flex;justify-content:flex-end;gap:8px;margin:-7px 0 14px}.export-actions .button{min-height:34px;font-size:10px}td:nth-child(3){color:#78847c;font-size:10px;white-space:nowrap}
 @media(max-width:600px){.export-actions{justify-content:flex-start;flex-wrap:wrap}.export-actions .button{flex:1;padding:0 8px}td:nth-child(3){font-size:9px}}
+.product-cell{align-items:flex-start}.product-details{flex:1}.product-name{display:block;max-width:none;overflow:visible;text-overflow:clip;white-space:normal;overflow-wrap:anywhere;line-height:1.4}
