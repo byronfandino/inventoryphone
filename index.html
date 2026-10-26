@@ -42,8 +42,9 @@
           </div>
           <div class="field-group">
             <label for="product-barcode">Código de barras</label>
-            <div class="barcode-entry"><input id="product-barcode" name="barcode" type="text" maxlength="120" autocomplete="off" placeholder="Escribe o escanea el código" required><button type="button" class="scan-button" data-scan-target="product-barcode"><span aria-hidden="true">▦</span> Escanear</button></div>
-            <p class="field-hint">Obligatorio al crear. Se conserva como texto, incluidos los ceros iniciales.</p>
+            <div class="barcode-entry"><input id="product-barcode" name="barcode" type="text" maxlength="120" autocomplete="off" placeholder="Escribe o escanea el código" required><button id="barcode-voice-button" class="voice-button" type="button" aria-label="Dictar código de barras" aria-pressed="false" aria-describedby="barcode-voice-status"><span aria-hidden="true">🎙</span><span>Dictar</span></button><button type="button" class="scan-button" data-scan-target="product-barcode"><span aria-hidden="true">▦</span> Escanear</button></div>
+            <p id="barcode-voice-status" class="field-hint voice-status" role="status" aria-live="polite" hidden></p>
+            <p class="field-hint">Obligatorio al crear. Se conserva como texto, incluidos los ceros iniciales. Revisa el resultado del dictado: el reconocimiento puede confundir los dígitos.</p>
           </div>
           <div class="field-group">
             <label for="product-quantity">Cantidad inicial</label>
@@ -68,9 +69,10 @@
         <div class="search-wrap">
           <label class="visually-hidden" for="search-input">Buscar productos</label>
           <span class="search-icon" aria-hidden="true">⌕</span>
-          <input id="search-input" type="search" placeholder="Buscar por nombre o código…" autocomplete="off">
-          <kbd>⌘ K</kbd>
+          <input id="search-input" type="search" placeholder="Buscar por nombre o código…" autocomplete="off" aria-describedby="search-voice-status">
+          <button id="search-voice-button" class="voice-button" type="button" aria-label="Dictar búsqueda" aria-pressed="false" aria-describedby="search-voice-status"><span aria-hidden="true">🎙</span><span>Dictar</span></button>
         </div>
+        <p id="search-voice-status" class="field-hint voice-status search-voice-status" role="status" aria-live="polite" hidden></p>
         <div class="export-actions" aria-label="Exportar inventario">
           <button id="export-csv" type="button" class="button button-secondary">Exportar CSV</button>
           <button id="export-json" type="button" class="button button-secondary">Exportar copia JSON</button>

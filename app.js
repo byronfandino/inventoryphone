@@ -8,8 +8,11 @@ const barcodeInput = document.querySelector('#product-barcode');
 const quantityInput = document.querySelector('#product-quantity');
 const previousPurchaseInput = document.querySelector('#product-previous-purchase');
 const voiceButton = document.querySelector('#voice-button');
-const voiceButtonLabel = document.querySelector('#voice-button-label');
 const voiceStatus = document.querySelector('#voice-status');
+const barcodeVoiceButton = document.querySelector('#barcode-voice-button');
+const barcodeVoiceStatus = document.querySelector('#barcode-voice-status');
+const searchVoiceButton = document.querySelector('#search-voice-button');
+const searchVoiceStatus = document.querySelector('#search-voice-status');
 const searchInput = document.querySelector('#search-input');
 const list = document.querySelector('#product-list');
 const emptyState = document.querySelector('#empty-state');
@@ -32,55 +35,74 @@ let scannerTarget;
 let speechRecognition;
 let speechActive = false;
 let speechCancelled = false;
+let speechTarget;
 let pendingImport;
 
 const BACKUP_FORMAT = 'inventario-local';
 const BACKUP_VERSION = 2;
 
-function setVoiceStatus(message, isError = false) {
-  voiceStatus.textContent = message;
-  voiceStatus.classList.toggle('error-text', isError);
-  voiceStatus.hidden = !message;
+const speechTargets = {
+  name: { input: nameInput, button: voiceButton, status: voiceStatus, label: 'nombre del producto' },
+  barcode: { input: barcodeInput, button: barcodeVoiceButton, status: barcodeVoiceStatus, label: 'código' },
+  search: { input: searchInput, button: searchVoiceButton, status: searchVoiceStatus, label: 'búsqueda' }
+};
+
+function setVoiceStatus(target, message, isError = false) {
+  target.status.textContent = message;
+  target.status.classList.toggle('error-text', isError);
+  target.status.hidden = !message;
+}
+
+function setVoiceButtonState(target, active) {
+  target.button.setAttribute('aria-pressed', String(active));
+  target.button.setAttribute('aria-label', active ? `Detener dictado de ${target.label}` : `Dictar ${target.label}`);
+  const label = target.button.querySelector('span:not([aria-hidden="true"])');
+  if (label) label.textContent = active ? 'Detener' : 'Dictar';
 }
 
 function stopVoiceRecognition(cancel = false) {
-  if (!speechRecognition || !speechActive) return;
+  if (!speechRecognition) return;
   speechCancelled = cancel;
   if (cancel) speechRecognition.abort();
   else speechRecognition.stop();
-  setVoiceStatus(cancel ? 'Dictado cancelado.' : 'Finalizando el dictado…');
+  if (speechTarget) setVoiceStatus(speechTarget, cancel ? 'Dictado cancelado.' : 'Finalizando el dictado…');
 }
 
-function startVoiceRecognition() {
+function startVoiceRecognition(target) {
+  if (speechRecognition) {
+    setVoiceStatus(target, 'Ya hay otro dictado activo. Espera a que termine e inténtalo de nuevo.', true);
+    return;
+  }
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
   if (!Recognition) {
-    setVoiceStatus('Este navegador no admite dictado por voz. Escribe el nombre manualmente.', true);
+    setVoiceStatus(target, 'Este navegador no admite dictado por voz. Puedes escribir el texto manualmente.', true);
     return;
   }
   if (!window.isSecureContext) {
-    setVoiceStatus('El dictado requiere HTTPS o localhost. Puedes escribir el nombre manualmente.', true);
+    setVoiceStatus(target, 'El dictado requiere HTTPS o localhost. Puedes escribir el texto manualmente.', true);
     return;
   }
   speechRecognition = new Recognition();
+  speechTarget = target;
   speechRecognition.lang = 'es-CO';
   speechRecognition.continuous = false;
   speechRecognition.interimResults = false;
   speechCancelled = false;
   speechRecognition.onstart = () => {
     speechActive = true;
-    voiceButton.setAttribute('aria-pressed', 'true');
-    voiceButton.setAttribute('aria-label', 'Detener dictado');
-    voiceButtonLabel.textContent = 'Detener';
-    setVoiceStatus('Escuchando… Habla ahora.');
+    setVoiceButtonState(target, true);
+    setVoiceStatus(target, 'Escuchando… Habla ahora.');
   };
   speechRecognition.onresult = event => {
     if (speechCancelled) return;
     const transcript = Array.from(event.results).filter(result => result.isFinal).map(result => result[0].transcript).join(' ').trim();
     if (transcript) {
-      nameInput.value = cleanName(transcript);
-      nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-      setVoiceStatus(`Nombre reconocido: ${nameInput.value}`);
-    } else setVoiceStatus('No se reconocieron palabras. Inténtalo de nuevo.', true);
+      target.input.value = target === speechTargets.name ? cleanName(transcript) : transcript.trim();
+      target.input.dispatchEvent(new Event('input', { bubbles: true }));
+      setVoiceStatus(target, target === speechTargets.barcode
+        ? `Código reconocido: ${target.input.value}. Revisa los dígitos, especialmente los ceros iniciales.`
+        : `${target.label === 'búsqueda' ? 'Búsqueda' : 'Nombre'} reconocido: ${target.input.value}`);
+    } else setVoiceStatus(target, 'No se reconoció texto. Inténtalo de nuevo.', true);
   };
   speechRecognition.onerror = event => {
     const messages = {
@@ -92,30 +114,30 @@ function startVoiceRecognition() {
       'language-not-supported': 'El reconocimiento de español de Colombia no está disponible en este navegador.',
       'aborted': speechCancelled ? 'Dictado cancelado.' : 'El dictado se detuvo.'
     };
-    setVoiceStatus(messages[event.error] || 'Ocurrió un error al reconocer la voz. Puedes escribir el nombre manualmente.', true);
+    setVoiceStatus(target, messages[event.error] || 'Ocurrió un error al reconocer la voz. Puedes escribir el texto manualmente.', true);
   };
   speechRecognition.onend = () => {
     speechActive = false;
-    voiceButton.setAttribute('aria-pressed', 'false');
-    voiceButton.setAttribute('aria-label', 'Dictar nombre del producto');
-    voiceButtonLabel.textContent = 'Dictar';
+    setVoiceButtonState(target, false);
     speechRecognition = undefined;
+    speechTarget = undefined;
   };
-  setVoiceStatus('Solicitando acceso al micrófono…');
+  setVoiceStatus(target, 'Solicitando acceso al micrófono…');
   try { speechRecognition.start(); }
   catch {
     speechRecognition = undefined;
-    setVoiceStatus('No se pudo iniciar el dictado. Espera un momento e inténtalo de nuevo.', true);
+    speechTarget = undefined;
+    setVoiceStatus(target, 'No se pudo iniciar el dictado. Espera un momento e inténtalo de nuevo.', true);
   }
 }
 
-voiceButton.addEventListener('click', () => {
-  if (speechActive) stopVoiceRecognition();
-  else startVoiceRecognition();
-});
+Object.values(speechTargets).forEach(target => target.button.addEventListener('click', () => {
+  if (speechTarget === target && speechActive) stopVoiceRecognition();
+  else startVoiceRecognition(target);
+}));
 
 document.addEventListener('keydown', event => {
-  if (event.key === 'Escape' && speechActive) stopVoiceRecognition(true);
+  if (event.key === 'Escape' && speechRecognition) stopVoiceRecognition(true);
 });
 
 function normalizeText(value) {
@@ -398,10 +420,6 @@ function createProductRow(product) {
   const nameCell = document.createElement('td');
   const productCell = document.createElement('div');
   productCell.className = 'product-cell';
-  const avatar = document.createElement('span');
-  avatar.className = 'product-avatar';
-  avatar.setAttribute('aria-hidden', 'true');
-  avatar.textContent = product.name.charAt(0).toLocaleUpperCase('es');
   const details = document.createElement('span');
   details.className = 'product-details';
   const name = document.createElement('span');
@@ -411,7 +429,7 @@ function createProductRow(product) {
   barcode.className = `product-barcode${product.barcode ? '' : ' missing-barcode'}`;
   barcode.textContent = product.barcode || 'Sin código';
   details.append(name, barcode);
-  productCell.append(avatar, details);
+  productCell.append(details);
   nameCell.append(productCell);
   const quantityCell = document.createElement('td');
   const pill = document.createElement('span');
