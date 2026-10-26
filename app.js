@@ -97,7 +97,11 @@ function startVoiceRecognition(target) {
     if (speechCancelled) return;
     const transcript = Array.from(event.results).filter(result => result.isFinal).map(result => result[0].transcript).join(' ').trim();
     if (transcript) {
-      target.input.value = target === speechTargets.name ? cleanName(transcript) : transcript.trim();
+      target.input.value = target === speechTargets.name
+        ? cleanName(transcript)
+        : target === speechTargets.barcode
+          ? transcript.replace(/\s/g, '')
+          : transcript.trim();
       target.input.dispatchEvent(new Event('input', { bubbles: true }));
       setVoiceStatus(target, target === speechTargets.barcode
         ? `Código reconocido: ${target.input.value}. Revisa los dígitos, especialmente los ceros iniciales.`
